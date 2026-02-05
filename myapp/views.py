@@ -9,6 +9,8 @@ from myapp import admin
 from myapp.models import*
 from .models import cart_table
 from django.db.models import Q
+from django.db.models import Avg
+
 
 
 
@@ -177,9 +179,15 @@ def products_post(request):
 
 
 def view_product(request):
+    
     ob=product_table.objects.all()
     l=[]
     for i in ob:
+        avg_rating = rating_table.objects.filter(
+            PRODUCT=i.id
+        ).aggregate(Avg('rating'))
+        print(avg_rating,"aaaaaaaaaaaa")
+
         l.append({
             "id":i.id,
             "image":i.image.url,
@@ -189,10 +197,13 @@ def view_product(request):
             "size":i.size,
             "color":i.color,
             "stock":i.stock,
-            "date":i.date ,
+            "date":i.date,
+            # "rating":i.rating,
+            "avg_rating":avg_rating['rating__avg'],
             "category":i.CATEGORY.name})
-    print(l,"ssss")
-    return JsonResponse({"status":"ok","value":l})
+        print(l,"ssss")
+    return JsonResponse({"status":"ok","value":l,
+                         })
 
 def delete_product(request,id):
     ob=product_table.objects.get(id=id)
@@ -277,6 +288,11 @@ def view_all_products_user(request,category):
     print(ob,"daaa")
     l=[]
     for i in ob:
+        avg_rating = rating_table.objects.filter(
+            PRODUCT=i.id
+        ).aggregate(Avg('rating'))
+        print(avg_rating,"aaaaaaaaaaaa")
+
         l.append({
             "id":i.id,
             "image":i.image.url,
@@ -287,6 +303,7 @@ def view_all_products_user(request,category):
             "description":i.description,
             "date":i.date,
             "stock":i.stock,
+            "avg_rating":avg_rating['rating__avg'],
             "size":i.size,
             "category":i.CATEGORY.name
 
@@ -294,18 +311,91 @@ def view_all_products_user(request,category):
     print(l,"ssss")
     return JsonResponse({"status":"ok","value":l})
 
-def add_cart_post(request):   
-    print(request.POST,"kkkkkkkkkkkkkkkkkkk")  
-    # quantity=request.POST['quantity']
-    lid=request.POST['lid']
-    pid=request.POST['pid']
-    # print(quantity)
+# def add_cart_post(request):   
+#     print(request.POST,"kkkkkkkkkkkkkkkkkkk")  
+#     # quantity=request.POST['quantity']
+#     lid=request.POST['lid']
+#     pid=request.POST['pid']
+#     # print(quantity)
+#     ob=cart_table()
+#     ob.USER=user_table.objects.get(LOGIN_id=lid)
+#     ob.PRODUCT=product_table.objects.get(id=pid)
+#     ob.quantity=1
+#     ob.save()
+    
+#     return JsonResponse({'message': 'Added'})
+
+
+
+def add_cart_post(request):
+    lid = request.POST['lid']
+    pid = request.POST['pid']
+      
+    user = user_table.objects.get(LOGIN_id=lid)
+    product = product_table.objects.get(id=pid)
+
+    if product.stock <= 0:
+        return JsonResponse({'message': 'Out of stock'})
+
+    cart_item = cart_table.objects.filter(USER=user, PRODUCT=product)
+    if cart_item.exists():
+        return JsonResponse({'message': 'Already Added'})
+        
     ob=cart_table()
     ob.USER=user_table.objects.get(LOGIN_id=lid)
     ob.PRODUCT=product_table.objects.get(id=pid)
     ob.quantity=1
     ob.save()
+
+    product.stock -= 1
+    product.save()
+
     return JsonResponse({'message': 'Added'})
+
+
+
+# def add_cart_post(request):
+#     lid = request.POST['lid']
+#     pid = request.POST['pid']
+#     action = request.POST.get('action') 
+
+#     user = user_table.objects.get(LOGIN_id=lid)
+#     product = product_table.objects.get(id=pid)
+#     cart_item = cart_table.objects.filter(USER=user, PRODUCT=product)
+#     if cart_item.exists():
+
+#         return JsonResponse({'message': 'Already Added'})
+
+    
+#     cart_item, created = cart_table.objects.get_or_create(USER=user, PRODUCT=product, defaults={'quantity': 1})
+#     if not created:
+#         if action == "increase":
+#             if product.stock > 0:
+#                 cart_item.quantity += 1
+#                 product.stock -= 1
+#             else:
+#                 return JsonResponse({"status": "error", "message": "Out of stock"})
+#         elif action == "decrease":
+#             if cart_item.quantity > 1:
+#                 cart_item.quantity -= 1
+#                 product.stock += 1
+#             else:
+#                 return JsonResponse({"status": "error", "message": "Quantity cannot be less than 1"})
+
+#     else:
+#         if product.stock <= 0:
+#             cart_item.delete()
+#             return JsonResponse({"status": "error", "message": "Out of stock"})
+#         product.stock -= 1
+
+#     cart_item.save()
+#     product.save()
+
+#     return JsonResponse({"status": "success", "message": "Cart updated"})
+
+
+   
+
 
 
 def view_cart(request):
@@ -360,6 +450,10 @@ def update_quantity(request, id):
 
 def delete_cart(request,id):
     ob=cart_table.objects.get(id=id)
+    product = ob.PRODUCT
+    quantity = ob.quantity
+    product.stock += quantity
+    product.save()
     ob.delete()
     return JsonResponse({"status":"ok"})
 
@@ -422,7 +516,8 @@ def view_order_more(request):
     # lid=request.POST["lid"]
     orderid=request.POST["orderid"]
     order = order_item_table.objects.filter(ORDER_id=orderid)
-    
+    # pid=request.POST["pid"]
+
     data = []
     for idx, i in enumerate(order, start=1):
         data.append({
@@ -432,6 +527,7 @@ def view_order_more(request):
             "date":i.date,
             "order":i.ORDER.id,
             "product":i.PRODUCT.name,
+            "pid":i.PRODUCT.id,
             # "image": i.PRODUCT.image,
             "size":i.PRODUCT.size,
             "image": i.PRODUCT.image.url if i.PRODUCT.image else "",
@@ -485,117 +581,58 @@ def admin_view_order_more(request):
 
 
 
+# def add_rating(request):
+#     try:
+#         lid = request.POST.get('lid')
+#         pid = request.POST.get('pid')
+#         rating = request.POST.get('rating')
+#         review = request.POST.get('review')
+#         date = request.POST.get('date') or datetime.now().date()
 
-# def search_products(request):
-#     query=request.POST["query",'']
+#         user = user_table.objects.get(LOGIN_id=lid)
+#         product = product_table.objects.get(id=pid)
 
-#     products = product_table.objects.filter(
-#         Q(name__icontains=query) |
-#         Q(description__icontains=query) |
-#         Q(color__icontains=query) |
-#         Q(size__icontains=query) |
-#         Q(CATEGORY__name__icontains=query) |
-#         Q(CATEGORY__category__icontains=query)
-#     )
+#         ob = rating_table()
+#         ob.USER = user
+#         ob.PRODUCT = product
+#         ob.rating = rating
+#         ob.review = review
+#         ob.date = date
+#         ob.save()
 
-#     data = []
-#     for p in products:
-#         data.append({
-#             "id": p.id,
-#             "name": p.name,
-#             "price": str(p.price),
-#             "description": p.description,
-#             "color": p.color,
-#             "size": p.size,
-#             "category": p.CATEGORY.name,
-#             "image": p.image.url if p.image else "",
-#             "rating": str(p.rating),
-#             "stock": p.stock
-#         })
+#         return JsonResponse({'status': True, 'message': 'Rating added successfully'})
 
-#     return JsonResponse(data, safe=False)
+#     except user_table.DoesNotExist:
+#         return JsonResponse({'status': False, 'message': 'User not found'})
+#     except product_table.DoesNotExist:
+#         return JsonResponse({'status': False, 'message': 'Product not found'})
+#     except Exception as e:
+#         return JsonResponse({'status': False, 'message': str(e)})
+
 
 def add_rating(request):
-    print(request.POST,"kkkkkkkkkkkkkkkkkkk")  
-    lid=request.POST['lid']
-    pid=request.POST['pid']  
+  
+    lid = request.POST.get('lid')
+    pid = request.POST.get('pid')
+    rating = request.POST.get('rating')
+    review = request.POST.get('review')
 
-    ob=rating_table()
-    ob.USER=user_table.objects.get(LOGIN_id=lid)
-    ob.PRODUCT=product_table.objects.get(id=pid)
-    ob.rating=rating
-    ob.review=review
-    ob.date=datetime.now().today()
-    ob.save()
-    return JsonResponse({'message': 'Added'})
+    print(rating,review,pid,lid)
 
+    user = user_table.objects.get(LOGIN_id=lid)
+    product = product_table.objects.get(id=pid)
 
-# def create_payment(request):
-#     lid=request.POST['lid']
-#     amount=request.POST['amount']
-#     payment_id=request.POST.get('payment_id', '')
+    ob = rating_table.objects.create(
+        USER=user,
+        PRODUCT=product,
+        rating=int(rating),   
+        review=review
+    )
 
-#     ob=payment_table()
-#     ob.USER=user_table.objects.get(LOGIN_id=lid)
-#     ob.amount=amount
-#     ob.payment_method = "RAZORPAY"
-#     ob.payment_id=payment_id
-#     ob.status="PENDING"
-#     ob.save()
-#     return JsonResponse({"status":"ok"})
-
-
-
-# import razorpay
-# from django.conf import settings
-
-# client = razorpay.Client(
-#     auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET)
-# )
-
-# def create_order(request):
-#     amount = int(request.POST['amount'])  # in paise
-
-#     order = client.order.create({
-#         "amount": amount,
-#         "currency": "INR",
-#         "payment_capture": 1
-#     })
-
-#     return JsonResponse({
-#         "order_id": order["id"],
-#         "amount": order["amount"],
-#         "key": settings.RAZORPAY_KEY_ID
-#     })
-
-# from django.views.decorators.csrf import csrf_exempt
-
-# @csrf_exempt
-# def verify_payment(request):
-#     data = request.POST
-
-#     try:
-#         client.utility.verify_payment_signature({
-#             "razorpay_order_id": data['razorpay_order_id'],
-#             "razorpay_payment_id": data['razorpay_payment_id'],
-#             "razorpay_signature": data['razorpay_signature'],
-#         })
-
-#         payment_table.objects.create(
-#             USER=user_table.objects.get(LOGIN_id=data['lid']),
-#             amount=data['amount'],
-#             payment_method="RAZORPAY",
-#             payment_id=data['razorpay_payment_id'],
-#             status="SUCCESS"
-#         )
-
-#         return JsonResponse({"status": "success"})
-
-#     except:
-#         return JsonResponse({"status": "failed"})
-
-
-
+    return JsonResponse({
+        'status': True,
+        'message': 'Rating added successfully'
+    })
 
 
 

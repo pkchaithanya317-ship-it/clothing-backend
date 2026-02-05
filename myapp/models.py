@@ -90,6 +90,6 @@ class payment_table(models.Model):
 class rating_table(models.Model):
     USER=models.ForeignKey(user_table,on_delete=models.CASCADE)
     PRODUCT=models.ForeignKey(product_table,on_delete=models.CASCADE)
-    rating=models.CharField(max_length=100)
+    rating = models.IntegerField()
     review=models.CharField(max_length=100)
     date=models.DateTimeField(auto_now_add=True)
